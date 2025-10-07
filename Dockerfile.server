@@ -1,0 +1,29 @@
+# Server Dockerfile
+FROM node:18-alpine
+
+# Install curl for health checks
+RUN apk add --no-cache curl
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json* ./
+COPY server/tsconfig.json ./server/
+
+# Install all dependencies (including dev dependencies for build)
+RUN npm ci
+
+# Copy server source code
+COPY server/ ./server/
+
+# Build the server
+RUN npm run build:server
+
+# Remove dev dependencies after build
+RUN npm ci --only=production
+
+# Expose port
+EXPOSE 3001
+
+# Start the server
+CMD ["npm", "start"]

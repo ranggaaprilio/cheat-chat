@@ -211,7 +211,83 @@ VITE_SERVER_URL=http://localhost:3001
 
 ## 🚀 Deployment
 
-### Production Build
+### Docker Deployment (Recommended)
+
+The application is fully containerized with Docker support for easy deployment.
+
+#### Quick Start with Docker
+
+```bash
+# Start all services (Redis, Server, Client)
+docker-compose up -d
+
+# Check logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+```
+
+This will start:
+- **Redis**: Port 6379
+- **Server**: Port 3001
+- **Client**: Port 3000 (http://localhost:3000)
+
+#### Production Deployment
+
+```bash
+# Use production configuration
+docker-compose -f docker-compose.prod.yml up -d
+
+# Or build and start with production settings
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+#### Docker Services
+
+1. **redis**: Redis server for pub/sub messaging
+2. **server**: Node.js backend API with Socket.IO
+3. **client**: React frontend served by Nginx
+
+#### Environment Variables for Docker
+
+```bash
+# Server environment
+REDIS_HOST=redis
+REDIS_PORT=6379
+CLIENT_URL=http://localhost:3000
+NODE_ENV=production
+
+# Client build environment
+VITE_SERVER_URL=http://localhost:3001
+```
+
+#### Custom Configuration
+
+```bash
+# Custom environment file
+cp .env.production .env
+
+# Edit variables as needed
+nano .env
+
+# Start with custom environment
+docker-compose --env-file .env up -d
+```
+
+#### Health Checks
+
+The production configuration includes health checks:
+
+```bash
+# Check service health
+docker-compose ps
+
+# View health check logs
+docker-compose logs server | grep health
+```
+
+### Manual Production Build
 
 ```bash
 # Build both client and server
@@ -221,10 +297,12 @@ npm run build
 npm start
 ```
 
-### Docker Deployment
+### Traditional Deployment
+
+For deployment without Docker:
 
 ```dockerfile
-# Dockerfile example
+# Example Dockerfile for manual deployment
 FROM node:18-alpine
 
 WORKDIR /app
