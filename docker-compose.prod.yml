@@ -13,9 +13,7 @@ services:
       - chat-network
 
   server:
-    build:
-      context: .
-      dockerfile: Dockerfile.server
+    image: chat-server:${IMAGE_TAG:-latest}
     container_name: chat-server-prod
     ports:
       - "3001:3001"
@@ -37,11 +35,7 @@ services:
       retries: 3
 
   client:
-    build:
-      context: .
-      dockerfile: Dockerfile.client
-      args:
-        - VITE_SERVER_URL=http://localhost:3001
+    image: chat-client:${IMAGE_TAG:-latest}
     container_name: chat-client-prod
     ports:
       - "3000:80"
