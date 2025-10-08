@@ -33,6 +33,53 @@ pipeline {
             }
         }
         
+        stage('Docker Prerequisites') {
+            steps {
+                script {
+                    echo "🔍 Checking Docker prerequisites..."
+                    sh '''
+                        # Check if Docker is available
+                        if ! command -v docker >/dev/null 2>&1; then
+                            echo "❌ Docker command not found!"
+                            echo ""
+                            echo "Jenkins is running in Docker but can't access Docker on host."
+                            echo "To fix this, restart Jenkins with Docker socket mounted:"
+                            echo ""
+                            echo "docker run -d \\"
+                            echo "  --name jenkins \\"
+                            echo "  -p 8080:8080 -p 50000:50000 \\"
+                            echo "  -v jenkins_home:/var/jenkins_home \\"
+                            echo "  -v /var/run/docker.sock:/var/run/docker.sock \\"
+                            echo "  -v /usr/local/bin/docker:/usr/bin/docker \\"
+                            echo "  --user root \\"
+                            echo "  jenkins/jenkins:lts"
+                            echo ""
+                            exit 1
+                        fi
+                        
+                        # Test Docker daemon connection
+                        if ! docker info >/dev/null 2>&1; then
+                            echo "❌ Docker daemon not accessible!"
+                            echo "Docker socket may not be properly mounted."
+                            echo "Current user: $(whoami)"
+                            echo "Docker socket exists: $(test -S /var/run/docker.sock && echo 'Yes' || echo 'No')"
+                            echo "Docker socket permissions: $(ls -la /var/run/docker.sock 2>/dev/null || echo 'Not found')"
+                            exit 1
+                        fi
+                        
+                        # Check Docker Compose
+                        if ! docker compose version >/dev/null 2>&1 && ! docker-compose --version >/dev/null 2>&1; then
+                            echo "❌ Docker Compose not available!"
+                            echo "Install Docker Compose in Jenkins container or use Docker with Compose plugin."
+                            exit 1
+                        fi
+                        
+                        echo "✅ Docker prerequisites satisfied!"
+                    '''
+                }
+            }
+        }
+        
         stage('Environment Info') {
             steps {
                 script {
@@ -42,10 +89,38 @@ pipeline {
                         echo "Build Number: ${BUILD_NUMBER}"
                         echo "Job Name: ${JOB_NAME}"
                         echo "Workspace: ${WORKSPACE}"
-                        echo "Docker Version:"
-                        docker --version
-                        echo "Docker Compose Version:"
-                        docker compose version
+                        echo "Jenkins is running in: $(hostname)"
+                        
+                        # Check if Docker is available
+                        if command -v docker >/dev/null 2>&1; then
+                            echo "Docker Version:"
+                            docker --version
+                            echo "Docker Info:"
+                            docker info --format "{{.ServerVersion}}" || echo "Docker daemon not accessible"
+                        else
+                            echo "⚠️  Docker command not found - Jenkins needs Docker access"
+                            echo "Solutions:"
+                            echo "1. Mount Docker socket: -v /var/run/docker.sock:/var/run/docker.sock"
+                            echo "2. Install Docker in Jenkins container"
+                            echo "3. Use Docker-in-Docker (DinD)"
+                        fi
+                        
+                        # Check Docker Compose
+                        if command -v docker-compose >/dev/null 2>&1; then
+                            echo "Docker Compose Version (legacy):"
+                            docker-compose --version
+                        elif docker compose version >/dev/null 2>&1; then
+                            echo "Docker Compose Version (plugin):"
+                            docker compose version
+                        else
+                            echo "⚠️  Docker Compose not found"
+                        fi
+                        
+                        # Show environment details
+                        echo "Environment Variables:"
+                        echo "DOCKER_HOST: ${DOCKER_HOST:-not set}"
+                        echo "USER: $(whoami)"
+                        echo "Groups: $(groups 2>/dev/null || echo 'N/A')"
                     '''
                 }
             }
