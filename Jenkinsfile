@@ -121,15 +121,24 @@ pipeline {
                 script {
                     echo "🔨 Building Docker images with Docker Compose..."
                     sh '''
+                        # Clean up Docker resources to free disk space
+                        echo "🧹 Cleaning up Docker resources..."
+                        ./scripts/docker-cleanup.sh || echo "Cleanup completed with warnings"
+                        
                         # Clean up any previous builds
                         docker compose -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes || true
                         
-                        # Build all services
-                        docker compose -p ${COMPOSE_PROJECT_NAME} build --no-cache
+                        # Build all services with optimization flags
+                        echo "🏗️  Building with optimizations..."
+                        DOCKER_BUILDKIT=1 docker compose -p ${COMPOSE_PROJECT_NAME} build --no-cache
                         
                         # List built images
-                        echo "Built images:"
+                        echo "📋 Built images:"
                         docker compose -p ${COMPOSE_PROJECT_NAME} images
+                        
+                        # Show disk usage after build
+                        echo "📊 Disk usage after build:"
+                        df -h
                     '''
                 }
             }

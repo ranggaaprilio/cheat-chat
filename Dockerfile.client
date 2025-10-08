@@ -1,20 +1,41 @@
-# Client Dockerfile
-FROM node:18-alpine as builder
+# Client Dockerfile - Multi-stage build for optimization
+FROM node:20-alpine as builder
 
 WORKDIR /app
 
-# Copy workspace package files
+# Copy workspace package files first for better caching
 COPY package.json package-lock.json ./
 COPY client/package.json ./client/
 
-# Install all dependencies (workspace setup)
-RUN npm ci
+# Clear npm cache and install dependencies with optimizations
+RUN npm cache clean --force && \
+    npm ci --ignore-engines --only=production --no-audit --no-fund || \
+    npm install --ignore-engines --only=production --no-audit --no-fund
+
+# Install dev dependencies needed for build
+RUN npm ci --ignore-engines || npm install --ignore-engines
 
 # Copy client source code
 COPY client/ ./client/
 
 # Set build environment variable for Vite
 ENV VITE_SERVER_URL=http://localhost:3001
+ENV NODE_ENV=production
 
-# Build the client
-RUN npm run build:client
+# Build the client with memory optimization
+RUN NODE_OPTIONS="--max-old-space-size=1024" npm run build:client
+
+# Production stage - lightweight nginx
+FROM nginx:alpine as production
+
+# Copy built files from builder stage
+COPY --from=builder /app/client/dist /usr/share/nginx/html
+
+# Copy nginx configuration if you have one
+# COPY nginx.conf /etc/nginx/nginx.conf
+
+# Expose port 80
+EXPOSE 80
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]

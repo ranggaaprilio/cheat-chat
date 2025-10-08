@@ -1,5 +1,5 @@
 # Server Dockerfile
-FROM node:18-alpine
+FROM node:20-alpine
 
 # Install curl for health checks
 RUN apk add --no-cache curl
@@ -11,7 +11,7 @@ COPY package.json package-lock.json* ./
 COPY server/tsconfig.json ./server/
 
 # Install all dependencies (including dev dependencies for build)
-RUN npm ci
+RUN npm ci --ignore-engines || npm install --ignore-engines
 
 # Copy server source code
 COPY server/ ./server/
