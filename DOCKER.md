@@ -90,7 +90,7 @@ docker-compose down -v --remove-orphans
 
 ## Environment Variables
 
-The containers use these environment variables:
+The containers use these environment variables :
 
 **Server:**
 - `REDIS_HOST=redis`
