@@ -128,13 +128,20 @@ pipeline {
                         # Clean up any previous builds
                         docker compose -f docker-compose.prod.yml -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes || true
                         
-                        # Build all services using production compose file
-                        echo "🏗️  Building with docker-compose.prod.yml..."
-                        DOCKER_BUILDKIT=1 docker compose -f docker-compose.prod.yml -p ${COMPOSE_PROJECT_NAME} build --no-cache
+                        # Build server image first (since prod compose doesn't have build config for server)
+                        echo "🏗️  Building server image..."
+                        docker build -f Dockerfile.server -t chat-server:${BUILD_NUMBER} -t chat-server:latest .
+                        
+                        # Build client using production compose file
+                        echo "🏗️  Building client with docker-compose.prod.yml..."
+                        DOCKER_BUILDKIT=1 docker compose -f docker-compose.prod.yml -p ${COMPOSE_PROJECT_NAME} build --no-cache client
+                        
+                        # Tag client image properly
+                        docker tag chat-client:latest chat-client:${BUILD_NUMBER}
                         
                         # List built images
                         echo "📋 Built images:"
-                        docker compose -f docker-compose.prod.yml -p ${COMPOSE_PROJECT_NAME} images
+                        docker images | grep -E "(chat-server|chat-client)" | head -10
                         
                         echo "✅ Images built successfully"
                     '''
@@ -179,6 +186,8 @@ pipeline {
             script {
                 echo "🧹 Cleaning up..."
                 sh '''
+                    # Stop and remove build containers
+                    docker compose -f docker-compose.prod.yml -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes || true
                     
                     # Clean up dangling images (keep recent builds)
                     docker image prune -f || true
@@ -202,8 +211,8 @@ pipeline {
                 echo "❌ Pipeline failed!"
                 sh '''
                     echo "=== Failure Debug Information ==="
-                    docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} logs || true
-                    docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps -a || true
+                    docker compose -f docker-compose.prod.yml -p ${COMPOSE_PROJECT_NAME} logs || true
+                    docker compose -f docker-compose.prod.yml -p ${COMPOSE_PROJECT_NAME} ps -a || true
                     df -h
                     docker system df
                 '''
