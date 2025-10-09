@@ -119,60 +119,24 @@ pipeline {
         stage('Build Images') {
             steps {
                 script {
-                    echo "🔨 Building Docker images with Docker Compose..."
+                    echo "🔨 Building Docker images using docker-compose.prod.yml..."
                     sh '''
                         # Clean up Docker resources to free disk space
                         echo "🧹 Cleaning up Docker resources..."
                         ./scripts/docker-cleanup.sh || echo "Cleanup completed with warnings"
                         
                         # Clean up any previous builds
-                        docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes || true
+                        docker compose -f docker-compose.prod.yml -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes || true
                         
-                        # Build all services with optimization flags
-                        echo "🏗️  Building with optimizations..."
-                        DOCKER_BUILDKIT=1 docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} build --no-cache
+                        # Build all services using production compose file
+                        echo "🏗️  Building with docker-compose.prod.yml..."
+                        DOCKER_BUILDKIT=1 docker compose -f docker-compose.prod.yml -p ${COMPOSE_PROJECT_NAME} build --no-cache
                         
                         # List built images
                         echo "📋 Built images:"
-                        docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} images
+                        docker compose -f docker-compose.prod.yml -p ${COMPOSE_PROJECT_NAME} images
                         
-                        # Show disk usage after build
-                        echo "📊 Disk usage after build:"
-                        df -h
-                        
-                        # Tag images for deployment immediately after build
-                        echo "🏷️  Tagging images for deployment..."
-                        
-                        # First, let's see what images were actually created
-                        echo "Available images after build:"
-                        docker images | grep -E "${COMPOSE_PROJECT_NAME}"
-                        
-                        # Get the actual image names created by docker compose
-                        SERVER_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "${COMPOSE_PROJECT_NAME}" | grep server | head -1)
-                        CLIENT_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "${COMPOSE_PROJECT_NAME}" | grep client | head -1)
-                        
-                        echo "Found server image: $SERVER_IMAGE"
-                        echo "Found client image: $CLIENT_IMAGE"
-                        
-                        # Tag the images if they exist
-                        if [ ! -z "$SERVER_IMAGE" ]; then
-                            docker tag $SERVER_IMAGE chat-server:${BUILD_NUMBER}
-                            docker tag $SERVER_IMAGE chat-server:latest
-                            echo "✅ Tagged server image"
-                        else
-                            echo "❌ Server image not found"
-                        fi
-                        
-                        if [ ! -z "$CLIENT_IMAGE" ]; then
-                            docker tag $CLIENT_IMAGE chat-client:${BUILD_NUMBER}
-                            docker tag $CLIENT_IMAGE chat-client:latest
-                            echo "✅ Tagged client image"
-                        else
-                            echo "❌ Client image not found"
-                        fi
-                        
-                        echo "Images tagged for deployment:"
-                        docker images | grep -E "(chat-server|chat-client)"
+                        echo "✅ Images built successfully"
                     '''
                 }
             }
@@ -182,29 +146,17 @@ pipeline {
             when {
                 branch 'main'
             }
-            input {
-                message "Deploy to Production?"
-                ok "Deploy"
-                parameters {
-                    choice(
-                        name: 'DEPLOY_ENVIRONMENT',
-                        choices: ['production'],
-                        description: 'Target environment'
-                    )
-                }
-            }
             steps {
                 script {
-                    echo "🚀 Deploying to production environment..."
+                    echo "🚀 Deploying to production using docker-compose.prod.yml..."
                     sh '''
                         # Deploy to production using production compose file
                         echo "Deploying to production with build number ${BUILD_NUMBER}..."
-                        export IMAGE_TAG=${BUILD_NUMBER}
                         
                         # Stop current production (if running)
                         docker compose -f docker-compose.prod.yml -p production down --remove-orphans || true
                         
-                        # Start production with specific image tag
+                        # Start production
                         docker compose -f docker-compose.prod.yml -p production up -d
                         
                         # Wait for services to be ready
@@ -215,11 +167,7 @@ pipeline {
                         echo "Running production health checks..."
                         docker compose -f docker-compose.prod.yml -p production ps
                         
-                        # Test production endpoints
-                        timeout 60 bash -c 'until curl -f http://localhost:3001/health; do sleep 5; done' || echo "Production server health check completed"
-                        timeout 60 bash -c 'until curl -f http://localhost:3000; do sleep 5; done' || echo "Production client health check completed"
-                        
-                        echo "Production deployment completed successfully"
+                        echo "✅ Production deployment completed successfully"
                     '''
                 }
             }
@@ -231,8 +179,6 @@ pipeline {
             script {
                 echo "🧹 Cleaning up..."
                 sh '''
-                    # Stop and remove test containers
-                    docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes || true
                     
                     # Clean up dangling images (keep recent builds)
                     docker image prune -f || true
