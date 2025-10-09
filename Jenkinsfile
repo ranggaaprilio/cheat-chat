@@ -150,9 +150,6 @@ pipeline {
         }
         
         stage('Deploy to Production') {
-            when {
-                branch 'main'
-            }
             steps {
                 script {
                     echo "🚀 Deploying to production using docker-compose.prod.yml..."
