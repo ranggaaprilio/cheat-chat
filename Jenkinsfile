@@ -171,12 +171,6 @@ pipeline {
                             echo "Checking Redis..."
                             docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} exec -T redis redis-cli ping
                             
-                            echo "Checking Server..."
-                            timeout 30 bash -c 'until curl -f http://chat-server:3001/health; do sleep 2; done' || echo "Server health check completed"
-                            
-                            echo "Checking Client..."
-                            timeout 30 bash -c 'until curl -f http://chat-client:3000; do sleep 2; done' || echo "Client health check completed"
-                            
                             # Show logs for debugging
                             echo "=== Service Logs ==="
                             docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} logs --tail=50
