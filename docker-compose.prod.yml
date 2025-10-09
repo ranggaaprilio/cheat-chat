@@ -20,7 +20,7 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - CLIENT_URL=http://localhost:3000
+      - CLIENT_URL=https://chitchat.aprilio.dev
       - NODE_ENV=production
       - PORT=3001
     depends_on:
@@ -37,8 +37,10 @@ services:
   client:
     image: chat-client:${IMAGE_TAG:-latest}
     container_name: chat-client-prod
+    environment:
+      - VITE_SERVER_URL=https://api-chitchat.aprilio.dev
     ports:
-      - "3000:80"
+      - "3000:3000"
     depends_on:
       - server
     restart: unless-stopped
