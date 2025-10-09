@@ -4,12 +4,7 @@ pipeline {
     environment {
         // Docker Compose project name to avoid conflicts
         COMPOSE_PROJECT_NAME = "${env.JOB_NAME}-${env.BUILD_NUMBER}"
-        //                        # Show logs for debugging
-                        sh '''
-                            echo "=== Debug Logs ==="
-                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} logs
-                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps -a
-                        '''ocker buildkit for better builds
+        // Set Docker buildkit for better builds
         DOCKER_BUILDKIT = '1'
         COMPOSE_DOCKER_CLI_BUILD = '1'
     }
@@ -191,8 +186,8 @@ pipeline {
                         // Show logs for debugging
                         sh '''
                             echo "=== Debug Logs ==="
-                            docker compose -p ${COMPOSE_PROJECT_NAME} logs
-                            docker compose -p ${COMPOSE_PROJECT_NAME} ps -a
+                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} logs
+                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps -a
                         '''
                         throw e
                     }
@@ -358,11 +353,11 @@ pipeline {
                     # Stop and remove test containers
                     docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes || true
                     
-                //     # Clean up staging if this was a failed deployment
-                //     if [ "${BRANCH_NAME}" = "main" ] || [ "${BRANCH_NAME}" = "develop" ]; then
-                //         echo "Cleaning up staging environment..."
-                //         docker compose -f docker-compose.prod.yml -p staging down --remove-orphans || true
-                //     fi
+                    # Clean up staging if this was a failed deployment
+                    if [ "${BRANCH_NAME}" = "main" ] || [ "${BRANCH_NAME}" = "develop" ]; then
+                        echo "Cleaning up staging environment..."
+                        docker compose -f docker-compose.prod.yml -p staging down --remove-orphans || true
+                    fi
                     
                     # Clean up dangling images (keep recent builds)
                     docker image prune -f || true
