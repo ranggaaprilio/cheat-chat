@@ -342,23 +342,23 @@ pipeline {
         always {
             script {
                 echo "🧹 Cleaning up..."
-                sh '''
-                    # Stop and remove test containers
-                    docker compose -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes || true
+                // sh '''
+                //     # Stop and remove test containers
+                //     docker compose -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes || true
                     
-                    # Clean up staging if this was a failed deployment
-                    if [ "${BRANCH_NAME}" = "main" ] || [ "${BRANCH_NAME}" = "develop" ]; then
-                        echo "Cleaning up staging environment..."
-                        docker compose -f docker-compose.prod.yml -p staging down --remove-orphans || true
-                    fi
+                //     # Clean up staging if this was a failed deployment
+                //     if [ "${BRANCH_NAME}" = "main" ] || [ "${BRANCH_NAME}" = "develop" ]; then
+                //         echo "Cleaning up staging environment..."
+                //         docker compose -f docker-compose.prod.yml -p staging down --remove-orphans || true
+                //     fi
                     
-                    # Clean up dangling images (keep recent builds)
-                    docker image prune -f || true
+                //     # Clean up dangling images (keep recent builds)
+                //     docker image prune -f || true
                     
-                    # Show remaining images
-                    echo "Remaining images:"
-                    docker images | head -10
-                '''
+                //     # Show remaining images
+                //     echo "Remaining images:"
+                //     docker images | head -10
+                // '''
             }
         }
         
