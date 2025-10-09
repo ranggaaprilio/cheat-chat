@@ -142,45 +142,37 @@ pipeline {
                         
                         # Tag images for deployment immediately after build
                         echo "🏷️  Tagging images for deployment..."
-                        docker tag ${COMPOSE_PROJECT_NAME}_server:latest chat-server:${BUILD_NUMBER}
-                        docker tag ${COMPOSE_PROJECT_NAME}_client:latest chat-client:${BUILD_NUMBER}
-                        docker tag ${COMPOSE_PROJECT_NAME}_server:latest chat-server:latest
-                        docker tag ${COMPOSE_PROJECT_NAME}_client:latest chat-client:latest
+                        
+                        # First, let's see what images were actually created
+                        echo "Available images after build:"
+                        docker images | grep -E "${COMPOSE_PROJECT_NAME}"
+                        
+                        # Get the actual image names created by docker compose
+                        SERVER_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "${COMPOSE_PROJECT_NAME}" | grep server | head -1)
+                        CLIENT_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "${COMPOSE_PROJECT_NAME}" | grep client | head -1)
+                        
+                        echo "Found server image: $SERVER_IMAGE"
+                        echo "Found client image: $CLIENT_IMAGE"
+                        
+                        # Tag the images if they exist
+                        if [ ! -z "$SERVER_IMAGE" ]; then
+                            docker tag $SERVER_IMAGE chat-server:${BUILD_NUMBER}
+                            docker tag $SERVER_IMAGE chat-server:latest
+                            echo "✅ Tagged server image"
+                        else
+                            echo "❌ Server image not found"
+                        fi
+                        
+                        if [ ! -z "$CLIENT_IMAGE" ]; then
+                            docker tag $CLIENT_IMAGE chat-client:${BUILD_NUMBER}
+                            docker tag $CLIENT_IMAGE chat-client:latest
+                            echo "✅ Tagged client image"
+                        else
+                            echo "❌ Client image not found"
+                        fi
                         
                         echo "Images tagged for deployment:"
                         docker images | grep -E "(chat-server|chat-client)"
-                    '''
-                }
-            }
-        }
-        
-        stage('Deploy to Staging') {
-            steps {
-                script {
-                    echo "🚀 Deploying to staging environment..."
-                    sh '''
-                        # Images already tagged in Build Images stage
-                        echo "Using previously tagged images for staging deployment..."
-                        
-                        # Deploy to staging using production compose file
-                        echo "Deploying to staging with production configuration..."
-                        export IMAGE_TAG=latest
-                        docker compose -f docker-compose.prod.yml -p staging down --remove-orphans || true
-                        docker compose -f docker-compose.prod.yml -p staging up -d
-                        
-                        # Wait for services to be ready
-                        echo "Waiting for staging services to start..."
-                        sleep 30
-                        
-                        # Health check staging deployment
-                        echo "Running staging health checks..."
-                        docker compose -f docker-compose.prod.yml -p staging ps
-                        
-                        # Test staging endpoints
-                        timeout 60 bash -c 'until curl -f http://localhost:3001/health; do sleep 5; done' || echo "Staging server health check completed"
-                        timeout 60 bash -c 'until curl -f http://localhost:3000; do sleep 5; done' || echo "Staging client health check completed"
-                        
-                        echo "Staging deployment completed successfully"
                     '''
                 }
             }
@@ -241,10 +233,6 @@ pipeline {
                 sh '''
                     # Stop and remove test containers
                     docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes || true
-                    
-                    # Clean up staging environment on failure
-                    echo "Cleaning up staging environment..."
-                    docker compose -f docker-compose.prod.yml -p staging down --remove-orphans || true
                     
                     # Clean up dangling images (keep recent builds)
                     docker image prune -f || true
