@@ -1,0 +1,67 @@
+# CI configuration - uses dynamic container names
+services:
+  redis:
+    image: redis:7-alpine
+    # No fixed container_name for CI - Docker Compose will generate unique names
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - chat-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    # No fixed container_name for CI
+    ports:
+      - "3001:3001"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CLIENT_URL=http://client:3000
+      - NODE_ENV=production
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - chat-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+      args:
+        - VITE_SERVER_URL=http://localhost:3001
+    # No fixed container_name for CI
+    ports:
+      - "3000:3000"
+    depends_on:
+      server:
+        condition: service_healthy
+    networks:
+      - chat-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+networks:
+  chat-network:
+    driver: bridge
+
+volumes:
+  redis_data:

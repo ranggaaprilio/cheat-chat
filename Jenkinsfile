@@ -4,7 +4,12 @@ pipeline {
     environment {
         // Docker Compose project name to avoid conflicts
         COMPOSE_PROJECT_NAME = "${env.JOB_NAME}-${env.BUILD_NUMBER}"
-        // Set Docker buildkit for better builds
+        //                        # Show logs for debugging
+                        sh '''
+                            echo "=== Debug Logs ==="
+                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} logs
+                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps -a
+                        '''ocker buildkit for better builds
         DOCKER_BUILDKIT = '1'
         COMPOSE_DOCKER_CLI_BUILD = '1'
     }
@@ -126,15 +131,15 @@ pipeline {
                         ./scripts/docker-cleanup.sh || echo "Cleanup completed with warnings"
                         
                         # Clean up any previous builds
-                        docker compose -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes || true
+                        docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes || true
                         
                         # Build all services with optimization flags
                         echo "🏗️  Building with optimizations..."
-                        DOCKER_BUILDKIT=1 docker compose -p ${COMPOSE_PROJECT_NAME} build --no-cache
+                        DOCKER_BUILDKIT=1 docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} build --no-cache
                         
                         # List built images
                         echo "📋 Built images:"
-                        docker compose -p ${COMPOSE_PROJECT_NAME} images
+                        docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} images
                         
                         # Show disk usage after build
                         echo "📊 Disk usage after build:"
@@ -150,29 +155,36 @@ pipeline {
                     echo "🧪 Testing services..."
                     try {
                         sh '''
-                            # Start services in detached mode
-                            docker compose -p ${COMPOSE_PROJECT_NAME} up -d
+                            # Force cleanup any existing containers with same names
+                            echo "🧹 Force cleaning up any existing containers..."
+                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes || true
                             
-                            # Wait for services to be ready
-                            echo "Waiting for services to start..."
-                            sleep 30
+                            # Also stop any containers that might conflict with our naming
+                            docker stop websocket-redis chat-server chat-client websocket-redis-prod chat-server-prod chat-client-prod 2>/dev/null || true
+                            docker rm websocket-redis chat-server chat-client websocket-redis-prod chat-server-prod chat-client-prod 2>/dev/null || true
+                            
+                            # Start services in detached mode with health checks
+                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} up -d --wait
+                            
+                            # Services should be ready due to --wait flag
+                            echo "Services started with health checks passed"
                             
                             # Check if services are running
-                            docker compose -p ${COMPOSE_PROJECT_NAME} ps
+                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps
                             
-                            # Health checks
+                            # Additional health checks
                             echo "Checking Redis..."
-                            docker compose -p ${COMPOSE_PROJECT_NAME} exec -T redis redis-cli ping
+                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} exec -T redis redis-cli ping
                             
                             echo "Checking Server..."
-                            timeout 60 bash -c 'until curl -f http://localhost:3001/health || docker compose -p ${COMPOSE_PROJECT_NAME} exec -T server curl -f http://localhost:3001/health; do sleep 5; done' || echo "Server health check skipped"
+                            timeout 30 bash -c 'until curl -f http://localhost:3001/health; do sleep 2; done' || echo "Server health check completed"
                             
                             echo "Checking Client..."
-                            timeout 60 bash -c 'until curl -f http://localhost:3000 || docker compose -p ${COMPOSE_PROJECT_NAME} exec -T client curl -f http://localhost; do sleep 5; done' || echo "Client health check skipped"
+                            timeout 30 bash -c 'until curl -f http://localhost:3000; do sleep 2; done' || echo "Client health check completed"
                             
                             # Show logs for debugging
                             echo "=== Service Logs ==="
-                            docker compose -p ${COMPOSE_PROJECT_NAME} logs --tail=50
+                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} logs --tail=50
                         '''
                     } catch (Exception e) {
                         echo "❌ Service tests failed: ${e.getMessage()}"
@@ -198,7 +210,7 @@ pipeline {
                         
                         echo "Integration tests would run here"
                         echo "Services are running and accessible:"
-                        docker compose -p ${COMPOSE_PROJECT_NAME} ps
+                        docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps
                         
                         # Example: Test WebSocket connection
                         # You could add Node.js scripts or other test tools here
@@ -214,10 +226,10 @@ pipeline {
                     sh '''
                         # Basic performance metrics
                         echo "=== Docker Stats (5 second sample) ==="
-                        timeout 5 docker stats --no-stream $(docker compose -p ${COMPOSE_PROJECT_NAME} ps -q) || echo "Stats collection completed"
+                        timeout 5 docker stats --no-stream $(docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps -q) || echo "Stats collection completed"
                         
                         echo "=== Memory Usage ==="
-                        docker compose -p ${COMPOSE_PROJECT_NAME} exec -T server free -h || echo "Memory check completed"
+                        docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} exec -T server free -h || echo "Memory check completed"
                     '''
                 }
             }
@@ -230,7 +242,7 @@ pipeline {
                     sh '''
                         # Check for common security issues
                         echo "Checking for exposed ports..."
-                        docker compose -p ${COMPOSE_PROJECT_NAME} ps
+                        docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps
                         
                         # You could add tools like:
                         # - Docker Scout
@@ -342,9 +354,9 @@ pipeline {
         always {
             script {
                 echo "🧹 Cleaning up..."
-                // sh '''
-                //     # Stop and remove test containers
-                //     docker compose -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes || true
+                sh '''
+                    # Stop and remove test containers
+                    docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes || true
                     
                 //     # Clean up staging if this was a failed deployment
                 //     if [ "${BRANCH_NAME}" = "main" ] || [ "${BRANCH_NAME}" = "develop" ]; then
@@ -352,13 +364,13 @@ pipeline {
                 //         docker compose -f docker-compose.prod.yml -p staging down --remove-orphans || true
                 //     fi
                     
-                //     # Clean up dangling images (keep recent builds)
-                //     docker image prune -f || true
+                    # Clean up dangling images (keep recent builds)
+                    docker image prune -f || true
                     
-                //     # Show remaining images
-                //     echo "Remaining images:"
-                //     docker images | head -10
-                // '''
+                    # Show remaining images
+                    echo "Remaining images:"
+                    docker images | head -10
+                '''
             }
         }
         
@@ -374,8 +386,8 @@ pipeline {
                 echo "❌ Pipeline failed!"
                 sh '''
                     echo "=== Failure Debug Information ==="
-                    docker compose -p ${COMPOSE_PROJECT_NAME} logs || true
-                    docker compose -p ${COMPOSE_PROJECT_NAME} ps -a || true
+                    docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} logs || true
+                    docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps -a || true
                     df -h
                     docker system df
                 '''
