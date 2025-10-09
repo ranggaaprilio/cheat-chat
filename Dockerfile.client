@@ -31,8 +31,9 @@ RUN NODE_OPTIONS="--max-old-space-size=1024" npm run build:client
 # Production stage - serve static files
 FROM node:20-alpine as production
 
-# Install a simple static file server
-RUN npm install -g serve@14
+# Install wget for health checks and serve for static files
+RUN apk add --no-cache wget && \
+    npm install -g serve@14
 
 # Copy built files from builder stage
 COPY --from=builder /app/client/dist /app/dist

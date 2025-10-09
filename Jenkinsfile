@@ -150,36 +150,110 @@ pipeline {
                     echo "🧪 Testing services..."
                     try {
                         sh '''
+                            set -e  # Exit on any error
+                            
                             # Force cleanup any existing containers with same names
                             echo "🧹 Force cleaning up any existing containers..."
-                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes || true
+                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes --timeout 30 || true
                             
                             # Also stop any containers that might conflict with our naming
                             docker stop websocket-redis chat-server chat-client websocket-redis-prod chat-server-prod chat-client-prod 2>/dev/null || true
                             docker rm websocket-redis chat-server chat-client websocket-redis-prod chat-server-prod chat-client-prod 2>/dev/null || true
                             
-                            # Start services in detached mode with health checks
-                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} up -d --wait
+                            # Show available disk space and system resources
+                            echo "📊 System Resources Before Start:"
+                            df -h /
+                            free -h
                             
-                            # Services should be ready due to --wait flag
-                            echo "Services started with health checks passed"
+                            # Start services in detached mode
+                            echo "🚀 Starting services..."
+                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} up -d
                             
-                            # Check if services are running
+                            # Wait a bit for containers to initialize
+                            echo "⏳ Waiting for containers to initialize..."
+                            sleep 15
+                            
+                            # Check container status
+                            echo "📋 Container Status:"
+                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps -a
+                            
+                            # Wait for health checks (simplified approach)
+                            echo "🏥 Waiting for health checks..."
+                            for i in {1..18}; do  # 18 * 5 = 90 seconds max
+                                UNHEALTHY=$(docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps | grep "unhealthy" || true)
+                                if [ -n "$UNHEALTHY" ]; then
+                                    echo "❌ Some services are unhealthy:"
+                                    echo "$UNHEALTHY"
+                                    break
+                                fi
+                                
+                                HEALTHY_COUNT=$(docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps | grep -c "healthy" || echo "0")
+                                TOTAL_SERVICES=3  # redis, server, client
+                                
+                                if [ "$HEALTHY_COUNT" -eq "$TOTAL_SERVICES" ]; then
+                                    echo "✅ All $TOTAL_SERVICES services are healthy"
+                                    break
+                                elif [ $i -eq 18 ]; then
+                                    echo "⚠️ Health check timeout after 90 seconds - continuing with manual checks"
+                                    docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps
+                                else
+                                    echo "⏳ Waiting for health checks... ($HEALTHY_COUNT/$TOTAL_SERVICES healthy)"
+                                    sleep 5
+                                fi
+                            done
+                            
+                            # Manual health checks
+                            echo "🔍 Manual Health Checks:"
+                            
+                            # Check Redis
+                            echo "Checking Redis..."
+                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} exec -T redis redis-cli ping || {
+                                echo "❌ Redis check failed"
+                                docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} logs redis
+                                exit 1
+                            }
+                            
+                            # Check Server
+                            echo "Checking Server health endpoint..."
+                            for i in {1..30}; do
+                                if curl -f http://localhost:3001/health; then
+                                    echo "✅ Server is healthy"
+                                    break
+                                elif [ $i -eq 30 ]; then
+                                    echo "❌ Server health check failed after 30 attempts"
+                                    docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} logs server
+                                    exit 1
+                                else
+                                    echo "⏳ Server not ready yet (attempt $i/30)"
+                                    sleep 2
+                                fi
+                            done
+                            
+                            # Check Client
+                            echo "Checking Client..."
+                            for i in {1..15}; do
+                                if curl -f http://localhost:3000; then
+                                    echo "✅ Client is responding"
+                                    break
+                                elif [ $i -eq 15 ]; then
+                                    echo "❌ Client check failed after 15 attempts"
+                                    docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} logs client
+                                    exit 1
+                                else
+                                    echo "⏳ Client not ready yet (attempt $i/15)"
+                                    sleep 2
+                                fi
+                            done
+                            
+                            echo "🎉 All services are running and healthy!"
+                            
+                            # Show final status
+                            echo "=== Final Service Status ==="
                             docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps
                             
-                            # Additional health checks
-                            echo "Checking Redis..."
-                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} exec -T redis redis-cli ping
-                            
-                            echo "Checking Server..."
-                            timeout 30 bash -c 'until curl -f http://localhost:3001/health; do sleep 2; done' || echo "Server health check completed"
-                            
-                            echo "Checking Client..."
-                            timeout 30 bash -c 'until curl -f http://localhost:3000; do sleep 2; done' || echo "Client health check completed"
-                            
-                            # Show logs for debugging
-                            echo "=== Service Logs ==="
-                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} logs --tail=50
+                            # Show brief logs for reference
+                            echo "=== Recent Service Logs ==="
+                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} logs --tail=20
                         '''
                     } catch (Exception e) {
                         echo "❌ Service tests failed: ${e.getMessage()}"
