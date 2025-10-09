@@ -35,10 +35,13 @@ services:
       retries: 3
 
   client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+      args:
+        - VITE_SERVER_URL=https://api-chitchat.aprilio.dev
     image: chat-client:${IMAGE_TAG:-latest}
     container_name: chat-client-prod
-    environment:
-      - VITE_SERVER_URL=https://api-chitchat.aprilio.dev
     ports:
       - "3000:3000"
     depends_on:

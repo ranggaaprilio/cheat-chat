@@ -19,23 +19,28 @@ RUN npm ci --ignore-engines || npm install --ignore-engines
 COPY client/ ./client/
 
 # Set build environment variable for Vite
-ENV VITE_SERVER_URL=http://localhost:3001
+# This will be overridden by docker-compose build args
+ARG VITE_SERVER_URL=http://localhost:3001
+ENV VITE_SERVER_URL=${VITE_SERVER_URL}
 ENV NODE_ENV=production
 
 # Build the client with memory optimization
+# Environment variables are automatically available during build
 RUN NODE_OPTIONS="--max-old-space-size=1024" npm run build:client
 
-# Production stage - lightweight nginx
-FROM nginx:alpine as production
+# Production stage - serve static files
+FROM node:20-alpine as production
+
+# Install a simple static file server
+RUN npm install -g serve@14
 
 # Copy built files from builder stage
-COPY --from=builder /app/client/dist /usr/share/nginx/html
+COPY --from=builder /app/client/dist /app/dist
 
-# Copy nginx configuration if you have one
-# COPY nginx.conf /etc/nginx/nginx.conf
+WORKDIR /app
 
-# Expose port 80
-EXPOSE 80
+# Expose port 3000
+EXPOSE 3000
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Start serving static files
+CMD ["serve", "-s", "dist", "-l", "3000"]
