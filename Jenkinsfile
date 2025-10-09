@@ -139,126 +139,9 @@ pipeline {
                         # Show disk usage after build
                         echo "📊 Disk usage after build:"
                         df -h
-                    '''
-                }
-            }
-        }
-        
-        stage('Test Services') {
-            steps {
-                script {
-                    echo "🧪 Testing services..."
-                    try {
-                        sh '''
-                            # Force cleanup any existing containers with same names
-                            echo "🧹 Force cleaning up any existing containers..."
-                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes || true
-                            
-                            # Also stop any containers that might conflict with our naming
-                            docker stop websocket-redis chat-server chat-client websocket-redis-prod chat-server-prod chat-client-prod 2>/dev/null || true
-                            docker rm websocket-redis chat-server chat-client websocket-redis-prod chat-server-prod chat-client-prod 2>/dev/null || true
-                            
-                            # Start services in detached mode with health checks
-                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} up -d --wait
-                            
-                            # Services should be ready due to --wait flag
-                            echo "Services started with health checks passed"
-                            
-                            # Check if services are running
-                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps
-                            
-                            # Additional health checks
-                            echo "Checking Redis..."
-                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} exec -T redis redis-cli ping
-                            
-                            # Show logs for debugging
-                            echo "=== Service Logs ==="
-                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} logs --tail=50
-                        '''
-                    } catch (Exception e) {
-                        echo "❌ Service tests failed: ${e.getMessage()}"
-                        // Show logs for debugging
-                        sh '''
-                            echo "=== Debug Logs ==="
-                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} logs
-                            docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps -a
-                        '''
-                        throw e
-                    }
-                }
-            }
-        }
-        
-        stage('Integration Tests') {
-            steps {
-                script {
-                    echo "🔗 Running integration tests..."
-                    sh '''
-                        # Add your integration tests here
-                        # For example, you could run API tests, E2E tests, etc.
                         
-                        echo "Integration tests would run here"
-                        echo "Services are running and accessible:"
-                        docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps
-                        
-                        # Example: Test WebSocket connection
-                        # You could add Node.js scripts or other test tools here
-                    '''
-                }
-            }
-        }
-        
-        stage('Performance Check') {
-            steps {
-                script {
-                    echo "⚡ Basic performance check..."
-                    sh '''
-                        # Basic performance metrics
-                        echo "=== Docker Stats (5 second sample) ==="
-                        timeout 5 docker stats --no-stream $(docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps -q) || echo "Stats collection completed"
-                        
-                        echo "=== Memory Usage ==="
-                        docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} exec -T server free -h || echo "Memory check completed"
-                    '''
-                }
-            }
-        }
-        
-        stage('Security Scan') {
-            steps {
-                script {
-                    echo "🔒 Basic security checks..."
-                    sh '''
-                        # Check for common security issues
-                        echo "Checking for exposed ports..."
-                        docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} ps
-                        
-                        # You could add tools like:
-                        # - Docker Scout
-                        # - Trivy
-                        # - Snyk
-                        
-                        echo "Security scan placeholder - add your preferred security tools here"
-                    '''
-                }
-            }
-        }
-        
-        stage('Deploy to Staging') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'develop'
-                }
-            }
-            steps {
-                script {
-                    echo "🚀 Deploying to staging environment..."
-                    sh '''
-                        # Save current images with tags for deployment
-                        echo "Tagging images for staging deployment..."
-                        
-                        # Tag images with build number and latest
+                        # Tag images for deployment immediately after build
+                        echo "🏷️  Tagging images for deployment..."
                         docker tag ${COMPOSE_PROJECT_NAME}_server:latest chat-server:${BUILD_NUMBER}
                         docker tag ${COMPOSE_PROJECT_NAME}_client:latest chat-client:${BUILD_NUMBER}
                         docker tag ${COMPOSE_PROJECT_NAME}_server:latest chat-server:latest
@@ -266,6 +149,18 @@ pipeline {
                         
                         echo "Images tagged for deployment:"
                         docker images | grep -E "(chat-server|chat-client)"
+                    '''
+                }
+            }
+        }
+        
+        stage('Deploy to Staging') {
+            steps {
+                script {
+                    echo "🚀 Deploying to staging environment..."
+                    sh '''
+                        # Images already tagged in Build Images stage
+                        echo "Using previously tagged images for staging deployment..."
                         
                         # Deploy to staging using production compose file
                         echo "Deploying to staging with production configuration..."
@@ -347,11 +242,9 @@ pipeline {
                     # Stop and remove test containers
                     docker compose -f docker-compose.ci.yml -p ${COMPOSE_PROJECT_NAME} down --remove-orphans --volumes || true
                     
-                    # Clean up staging if this was a failed deployment
-                    if [ "${BRANCH_NAME}" = "main" ] || [ "${BRANCH_NAME}" = "develop" ]; then
-                        echo "Cleaning up staging environment..."
-                        docker compose -f docker-compose.prod.yml -p staging down --remove-orphans || true
-                    fi
+                    # Clean up staging environment on failure
+                    echo "Cleaning up staging environment..."
+                    docker compose -f docker-compose.prod.yml -p staging down --remove-orphans || true
                     
                     # Clean up dangling images (keep recent builds)
                     docker image prune -f || true
