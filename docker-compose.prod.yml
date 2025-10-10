@@ -28,6 +28,7 @@ services:
     restart: unless-stopped
     networks:
       - chat-network
+      - ci_network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
@@ -49,6 +50,7 @@ services:
     restart: unless-stopped
     networks:
       - chat-network
+      - ci_network
 
 networks:
   chat-network:
