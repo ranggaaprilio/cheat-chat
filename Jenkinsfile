@@ -157,6 +157,19 @@ pipeline {
                         # Deploy to production using production compose file
                         echo "Deploying to production with build number ${BUILD_NUMBER}..."
                         
+                        # Ensure ci_network exists (create if not exists)
+                        echo "📡 Ensuring ci_network exists..."
+                        if ! docker network ls | grep -q "ci_network"; then
+                            echo "Creating ci_network..."
+                            docker network create ci_network --driver bridge
+                        else
+                            echo "ci_network already exists"
+                        fi
+                        
+                        # List available networks for debugging
+                        echo "Available networks:"
+                        docker network ls | grep -E "(ci_network|chat-network)"
+                        
                         # Stop current production (if running)
                         docker compose -f docker-compose.prod.yml -p production down --remove-orphans || true
                         

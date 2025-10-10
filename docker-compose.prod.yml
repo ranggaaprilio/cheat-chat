@@ -55,6 +55,9 @@ services:
 networks:
   chat-network:
     driver: bridge
+  ci_network:
+    external: true
+    name: ci_network
 
 volumes:
   redis_data:
