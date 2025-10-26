@@ -107,14 +107,14 @@ jobs:
           docker pull ghcr.io/${{ github.repository }}-client:latest
           
           # Stop and remove existing containers
-          docker compose down
+          docker compose -f docker-compose.prod.yml down
           
           # Start with new images
-          docker compose up -d
+          docker compose -f docker-compose.prod.yml up -d
           
           # Clean up old images
           docker image prune -f
           
           # Check if services are running
           sleep 10
-          docker compose ps
+          docker compose -f docker-compose.prod.yml ps
