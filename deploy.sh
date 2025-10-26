@@ -89,8 +89,8 @@ pull_images() {
 stop_services() {
     log "Stopping existing services..."
     
-    if docker-compose -f docker-compose.prod.yml ps -q | grep -q .; then
-        docker-compose -f docker-compose.prod.yml down
+    if docker compose -f docker-compose.prod.yml ps -q | grep -q .; then
+        docker compose -f docker-compose.prod.yml down
     else
         log "No running services found."
     fi
@@ -105,7 +105,7 @@ start_services() {
         docker network create chat-network
     fi
     
-    docker-compose -f docker-compose.prod.yml up -d
+    docker compose -f docker-compose.prod.yml up -d
 }
 
 # Verify deployment
@@ -115,13 +115,13 @@ verify_deployment() {
     sleep 10  # Wait for services to start
     
     # Check if containers are running
-    if docker-compose -f docker-compose.prod.yml ps | grep -q "Up"; then
+    if docker compose -f docker-compose.prod.yml ps | grep -q "Up"; then
         log "✅ Services are running successfully!"
-        docker-compose -f docker-compose.prod.yml ps
+        docker compose -f docker-compose.prod.yml ps
     else
         error "❌ Some services failed to start!"
-        docker-compose -f docker-compose.prod.yml ps
-        docker-compose -f docker-compose.prod.yml logs
+        docker compose -f docker-compose.prod.yml ps
+        docker compose -f docker-compose.prod.yml logs
         exit 1
     fi
 }
@@ -172,20 +172,20 @@ case "${1:-deploy}" in
     "stop")
         log "Stopping application..."
         cd "$DEPLOY_DIR"
-        docker-compose -f docker-compose.prod.yml down
+        docker compose -f docker-compose.prod.yml down
         ;;
     "restart")
         log "Restarting application..."
         cd "$DEPLOY_DIR"
-        docker-compose -f docker-compose.prod.yml restart
+        docker compose -f docker-compose.prod.yml restart
         ;;
     "logs")
         cd "$DEPLOY_DIR"
-        docker-compose -f docker-compose.prod.yml logs -f
+        docker compose -f docker-compose.prod.yml logs -f
         ;;
     "status")
         cd "$DEPLOY_DIR"
-        docker-compose -f docker-compose.prod.yml ps
+        docker compose -f docker-compose.prod.yml ps
         ;;
     "-h"|"--help")
         usage
