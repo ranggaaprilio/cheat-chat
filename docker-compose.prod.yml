@@ -13,7 +13,7 @@ services:
       - chat-network
 
   server:
-    image: chat-server:${IMAGE_TAG:-latest}
+    image: ghcr.io/ranggaaprilio/cheat-chat-server:${IMAGE_TAG:-latest}
     container_name: chat-server-prod
     ports:
       - "3001:3001"
@@ -35,12 +35,7 @@ services:
       retries: 3
 
   client:
-    build:
-      context: .
-      dockerfile: Dockerfile.client
-      args:
-        - VITE_SERVER_URL=https://api-chitchat.aprilio.dev
-    image: chat-client:${IMAGE_TAG:-latest}
+    image: ghcr.io/ranggaaprilio/cheat-chat-client:${IMAGE_TAG:-latest}
     container_name: chat-client-prod
     ports:
       - "3000:3000"
